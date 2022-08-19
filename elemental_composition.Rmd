@@ -1,0 +1,1503 @@
+---
+title: "Elemental composition and silica production of siliceous Rhizaria"
+author: "Manon Laget"
+date: "21/04/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+opts <- options(knitr.kable.NA = "")
+```
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(plyr)
+library(ggplot2)
+library(ggpubr)
+library(ggpmisc)
+library(ggExtra)
+library(gridExtra)
+library(latex2exp)
+library(knitr)
+library(kableExtra)
+library(flextable)
+library(scales)
+library(lubridate)
+library(rcartocolor)
+
+# Stats
+library(caret)
+library(lmodel2)
+
+# For making maps
+library(oce)
+library(ocedata)
+library(sf)
+library(raster)
+library(ggthemes)
+library(ggsn)
+library(ggrepel)
+library(cowplot)
+library(rnaturalearth)
+
+```
+
+## Maps
+
+```{r}
+# Loading station data
+sampling_loc <- read.csv("data/P2107_sampling_locations.csv")
+lat <- sampling_loc$Lat
+lon <- sampling_loc$Lon
+type <- sampling_loc$Type
+
+```
+
+```{r, include=FALSE}
+# Sampling locations in the CCE with oce
+
+data(coastlineWorldFine)
+
+special_points = data.frame(name = c("Point Conception", "San Diego"),
+                      lon = c(-120.470833,-117.1625),
+                      lat = c(34.448889,32.715))
+
+par(mar=c(2, 2, 1, 1))
+mapPlot(coastlineWorldFine,
+        longitudelim=c(-135,-115), latitudelim=c(30, 38),
+        projection="+proj=lcc +lat_1=30 +lat_2=40 +lon_0=-120",
+        col='lightgray', clip=TRUE)
+mapPoints(lon, lat, cex = 1.2, pch = 19)
+mapPoints(longitude = special_points$lon, latitude = special_points$lat, 
+          pch = 15, cex = 1.2)
+mapText(longitude = special_points$lon, latitude = special_points$lat+0.2,
+        labels = special_points$name, pos=4, offset=0.5)
+mapText(-117, 38, "USA", cex=1.2, col="white")
+mapText(-116, 32, "Mexico", cex=1.2, col="white")
+mapText(-129, 33, "Pacific Ocean", cex=1.2, col="darkgrey",
+        vfont = c("sans serif", "italic"))
+```
+
+```{r}
+# Sampling locations with ggplot2 and sf
+
+theme_set(theme_bw())
+
+world <- ne_countries(scale='medium', returnclass = 'sf')
+
+# Mapping the stations in the CCE
+
+lonmin = -132
+lonmax = -115
+latmin = 28
+latmax = 37
+
+sites <- st_as_sf(data.frame(name = c("Point Conception", "San Diego"),
+                             longitude = c(-120.470833,-117.1625),
+                             latitude = c(34.448889,32.715)), 
+                  coords = c("longitude", "latitude"), remove=FALSE,
+                  crs = 4326, agr = "constant")
+
+samp_loc <- st_as_sf(sampling_loc, 
+                     coords = c("Longitude", "Latitude"), remove=FALSE, 
+                     crs = 4326, agr = "constant")
+
+map_cce <- ggplot(data = world) +
+  geom_sf(fill = "lightgray") +
+  theme(axis.title.x = element_text(size = 16),
+        axis.text.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        axis.text.y = element_text(size = 16)) +
+  scale_shape_discrete(solid=F) +
+  geom_sf(data = samp_loc, size = 3, show.legend=T) +
+  theme(legend.position = c(1, 1), legend.justification = c(1, 1),
+        legend.background = element_rect(fill = "white", colour = "black"),
+        legend.title = element_text(size=16),
+        legend.text = element_text(size=16)) +
+  geom_sf(data = sites, size = 2, shape = 15) +
+  geom_text_repel(data = sites, 
+                  aes(x = longitude, y = latitude, label = name), 
+                  size = 4.4, nudge_x = c(1.25, 1), nudge_y = c(0.3, 0.3),
+                  min.segment.length = 2) +
+  annotate(geom = "text", x = -119, y = 36, label = "USA", 
+           color = "white", size = 7) +
+  annotate(geom = "text", x = -115.5, y = 32.2, label = "Mexico", 
+           color = "white", size = 7) +
+  annotate(geom = "text", x = -126, y = 33.5, label = "Pacific Ocean", 
+           color = grey(0.5), size = 7, fontface = "italic") +
+  coord_sf(xlim = c(lonmin, lonmax), ylim = c(latmin, latmax)) +
+  xlab("Longitude")+ ylab("Latitude")+
+  theme(panel.grid.major = element_line(colour = gray(0.8), linetype = "dashed", 
+                                        size = 0.5),
+        panel.background = element_rect(fill = "white"), 
+        panel.border = element_rect(fill = NA))
+
+map_cce
+
+# Mapping Point B in Villefranche/Mer Bay
+
+lonmin <- 3
+lonmax <- 11
+latmin <- 45
+latmax <- 40
+
+villefranche <- data.frame(x = 7.3139, y = 43.6861,
+                           label = "Villefranche-sur-Mer")
+
+map_med <- ggplot(data = world) +
+  geom_sf(fill = "lightgray") + 
+  theme(axis.title.x = element_text(size = 16),
+        axis.text.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        axis.text.y = element_text(size = 16)) +
+  scale_shape_discrete(solid=F) +
+  geom_point(data = villefranche, aes(x = x, y = y), size = 3, shape = 15) +
+  geom_text_repel(data = villefranche, 
+                  aes(x = x, y = y, label = label), 
+                  size = 4.4, min.segment.length = 2) +
+  theme(legend.position = c(1, 1), legend.justification = c(1, 1),
+        legend.background = element_rect(fill = "white", colour = "black"),
+        legend.title = element_text(size=16),
+        legend.text = element_text(size=16)) +
+  annotate(geom = "text", x = 5, y = 44.5, label = "France", 
+           color = "white", size = 7) +
+  annotate(geom = "text", x = 9, y = 44.8, label = "Italy", 
+           color = "white", size = 7) +
+  annotate(geom = "text", x = 6, y = 41.5, label = "Mediterranean Sea", 
+           color = grey(0.5), size = 7, fontface = "italic") +
+  coord_sf(xlim = c(lonmin, lonmax), ylim = c(latmin, latmax)) +
+  xlab("Longitude") + ylab("Latitude") +
+  theme(panel.grid.major = element_line(colour = gray(0.8), linetype = "dashed", 
+                                        size = 0.5), 
+        panel.background = element_rect(fill = "white"), 
+        panel.border = element_rect(fill = NA))
+
+map_med
+
+ggsave2("results/sampling_locations_cce_2021.png", plot = map_cce)
+ggsave2("results/sampling_locations_med_2019.png", plot = map_med)
+
+```
+
+## Carbon and nitrogen content of planktonic Rhizaria Rhizaria
+
+### Loading and cleaning elemental data
+
+Data come from this study and Mansour et al. (2021).
+
+```{r}
+data <- readxl::read_xlsx("data/data_CN.xlsx")
+
+# Removing data deemed as outliers
+data <- data %>% filter(is.na(to_remove))
+
+# Elemental data are converted in µg/cell
+# and volume data in mm3
+# Colonial Collodaria are considered as single individuals
+data <- data %>% 
+  mutate(ugC_per_ind = case_when(
+  mode=="colonial" ~ total_C_ug,
+  mode=="solitary" ~ ngC_per_cell*(10^(-3))
+  )) %>%
+  mutate(ugN_per_ind = case_when(
+  mode=="colonial" ~ total_N_ug,
+  mode=="solitary" ~ ngN_per_cell*(10^(-3))
+  )) %>%
+  mutate(individual_volume = case_when(
+    mode=="colonial" ~ colony_volume_mm3,
+    mode=="solitary" ~ cell_vol_mean*(10^(-9))
+  )) %>%
+  mutate(ugC_per_mm3 = ugC_per_ind/individual_volume) %>%
+  mutate(ugN_per_mm3 = ugN_per_ind/individual_volume)
+
+```
+
+### Data summary
+
+```{r}
+# Counting samples and cells by reference
+counts_ref <- data %>% #filter(reference=="This study") %>%
+  summarise(n_samples_C = sum(!is.na(ugC_per_ind)),
+            n_cells_C = sum((!is.na(ugC_per_ind))*n_cells),
+            n_samples_N = sum(!is.na(ugN_per_ind)),
+            n_cells_N = sum((!is.na(ugN_per_ind))*n_cells))
+print(counts_ref)
+```
+
+Getting minimum and maximum values for C and N content for this study:
+
+```{r}
+#Carbon
+ccont <- data %>% filter(reference=="This study") %>%
+  group_by(type) %>%
+  filter(type!="Cytocladus") %>%
+  summarise(mean_C = mean(na.omit(ugC_per_ind)),
+            sd_C = sd(na.omit(ugC_per_ind)))
+minC <- ccont[which.min(ccont$mean_C),]
+maxC <- ccont[which.max(ccont$mean_C),]
+print(minC)
+print(maxC)
+
+# Nitrogen
+ncont <- data %>% filter(reference=="This study") %>%
+  group_by(type) %>%
+  filter(type!="Cytocladus") %>%
+  summarise(mean_N = mean(na.omit(ugN_per_ind)),
+            sd_N = sd(na.omit(ugN_per_ind)))
+minN <- ncont[which.min(ncont$mean_N),]
+maxN <- ncont[which.max(ncont$mean_N),]
+print(minN)
+print(maxN)
+
+```
+
+Summary of C:N ratios:
+
+```{r}
+# Getting mean, max and min C:N ratio for this study
+
+mean_cn <- data %>% filter(reference=="This study") %>%
+  summarise(mean_cn = mean(na.omit(c_n_ratio)),
+            sd_cn = sd(na.omit(c_n_ratio)))
+print(mean_cn)
+
+ratio <- data %>% filter(reference=="This study") %>%
+  group_by(type) %>%
+  summarise(mean_ratio = mean(na.omit(c_n_ratio)),
+            sd_ratio = sd(na.omit(c_n_ratio)))
+minratio <- ratio[which.min(ratio$mean_ratio),]
+maxratio <- ratio[which.max(ratio$sd_ratio),]
+print(minratio)
+print(maxratio)
+
+```
+
+### Table 1: C & N contents data summary
+
+```{r}
+# Summarizing the dataset
+table <- data %>% 
+  dplyr::select(group, order, type, n_cells, cell_vol_mean, cell_vol_sd, 
+                esd_mean, esd_sd, ugC_per_ind, ugC_per_mm3,
+                ugN_per_ind, ugN_per_mm3, c_n_ratio, reference)  %>%
+  group_by(group, order, type, reference) %>%
+  dplyr::summarise(group = unique(group),
+            order = unique(order),
+            # ESD
+            Mean_esd = as.integer(mean(na.omit(esd_mean))),
+            SD_esd = as.integer(sd(na.omit(esd_mean))),
+            # Carbon
+            n_samples_C = sum(!is.na(ugC_per_ind)),
+            n_cells_C = as.integer(sum((!is.na(ugC_per_ind))*n_cells)),
+            Mean_carbon_content = mean(na.omit(ugC_per_ind)),
+            SD_carbon_content = sd(na.omit(ugC_per_ind)),
+            Mean_carbon_density = mean(na.omit(ugC_per_mm3)),
+            SD_carbon_density = sd(na.omit(ugC_per_mm3)),
+            # Nitrogen
+            n_samples_N = sum(!is.na(ugN_per_ind)),
+            n_cells_N = as.integer(sum((!is.na(ugN_per_ind))*n_cells)),
+            Mean_nitrogen_content = mean(na.omit(ugN_per_ind)),
+            SD_nitrogen_content = sd(na.omit(ugN_per_ind)),
+            Mean_nitrogen_density = mean(na.omit(ugN_per_mm3)),
+            SD_nitrogen_density = sd(na.omit(ugN_per_mm3)),
+            #C:N ratio
+            Mean_cn_ratio = mean(na.omit(c_n_ratio)),
+            sd_cn_ratio = sd(na.omit(c_n_ratio))
+            )
+
+# Creating the table
+table %>% 
+  dplyr::select(-reference, reference) %>%
+  dplyr::rename('Reference' = reference,
+         'Group' = group,
+         'Taxon' = type
+         ) %>%
+  kable("html", 
+        caption = "Summary of carbon and nitrogen contents data used for this
+        analysis, compiled from Mansour et al. (2021) and this study.",
+        digits = 1) %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
+```
+
+### Volume to carbon content relationship
+
+```{r}
+# Fitting a linear model (OLS) for all individuals with LOOCV
+
+train_control <- trainControl(method = "LOOCV")
+
+model <- data %>% dplyr::select(ugC_per_ind, individual_volume) %>%
+  filter(!is.na(individual_volume)) %>%
+  filter(!is.na(ugC_per_ind)) %>%
+  mutate(ugC_per_ind = log10(ugC_per_ind),
+         individual_volume = log10(individual_volume)) %>%
+  train(ugC_per_ind ~., data = ., method = "lm",
+        trControl = train_control)
+
+summary(model)
+
+# Analysis of residuals
+
+resid <- tibble(.rows = 256)
+resid$fitted_values <- model$finalModel$fitted.values
+resid$residuals <- model$finalModel$residuals
+
+p1 <- ggplot(resid, aes(x = fitted_values, y = residuals)) +
+  geom_point() +
+  geom_hline(yintercept=0) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4)) +
+  xlab("Fitted values") +
+  ylab("Residuals")
+
+p2 <- ggplot(resid, aes(sample=residuals)) +
+  stat_qq() +
+  stat_qq_line() + 
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4)) +
+  xlab("Theoretical quantiles") +
+  ylab("Sample quantiles")
+
+p3 <- ggplot(resid, aes(x=residuals)) +
+  geom_density() +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4)) +
+  xlab("Residuals") +
+  ylab("Density")
+
+ggsave2("results/resid1_carbon.pdf", p1)
+ggsave2("results/resid2_carbon.pdf", p2)
+ggsave2("results/resid3_carbon.pdf", p3)
+
+```
+
+### Volume to nitrogen content relationship
+
+```{r}
+# Fitting a linear model (OLS) for all individuals with LOOCV
+
+model <- data %>% dplyr::select(ugN_per_ind, individual_volume) %>%
+  filter(!is.na(individual_volume)) %>%
+  filter(!is.na(ugN_per_ind)) %>%
+  mutate(ugN_per_ind = log10(ugN_per_ind),
+         individual_volume = log10(individual_volume)) %>%
+  train(ugN_per_ind ~., data = ., method = "lm",
+        trControl = train_control)
+
+summary(model)
+
+# Analysis of residuals
+
+resid <- tibble(.rows = 235)
+resid$fitted_values <- model$finalModel$fitted.values
+resid$residuals <- model$finalModel$residuals
+
+p1 <- ggplot(resid, aes(x = fitted_values, y = residuals)) +
+  geom_point() +
+  geom_hline(yintercept=0) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4)) +
+  xlab("Fitted values") +
+  ylab("Residuals")
+
+p2 <- ggplot(resid, aes(sample=residuals)) +
+  stat_qq() +
+  stat_qq_line() + 
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4)) +
+  xlab("Theoretical quantiles") +
+  ylab("Sample quantiles")
+
+p3 <- ggplot(resid, aes(x=residuals)) +
+  geom_density() +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4)) +
+  xlab("Residuals") +
+  ylab("Density")
+
+ggsave2("results/resid1_nitrogen.pdf", p1)
+ggsave2("results/resid2_nitrogen.pdf", p2)
+ggsave2("results/resid3_nitrogen.pdf", p3)
+
+```
+
+### Comparison with other protists
+
+We compare the slope of the C:vol allometry with the slopes obtained by Menden-Deuer and Lessard (2000).
+
+Group | Allometric relationship | Reference
+------------ | ------------- | -------------
+Protists excluding diatoms* | $C = 0.216 \times V^{0.939}$ | Menden-Deuer and Lessard (2000)
+Diatoms | $C = 0.288 \times V^{0.811}$ | Menden-Deuer and Lessard (2000)
+Rhizaria | $C = 9.078 \times V^{0.455}$ | This study
+
+```{r}
+# Testing for differences with Menden-Deuer and Lessard (2000)
+
+# Regression slopes
+slope_protists = 0.939
+slope_diatoms = 0.811
+
+coefs <- coef(summary(model))
+
+t_protists = (coefs[2,1] - slope_protists)/coefs[2,2]
+t_diatoms = (coefs[2,1] - slope_diatoms)/coefs[2,2]
+
+# Getting p-values
+
+# Various protists
+pt(t_protists, model$finalModel$df.residual)
+# Diatoms
+pt(t_diatoms, model$finalModel$df.residual)
+
+```
+
+### Plotting regressions
+
+```{r}
+# Plotting regression
+
+reg_carbon <- data %>% 
+  filter(type!="Acantharia") %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Challengeridae",
+    type=="Protocystis CCE" ~ "Challengeridae",
+    type=="Challengeria" ~ "Challengeridae",
+    type=="Nassellaria (other)" ~ "Nassellaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria",
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  ggplot(., aes(x=individual_volume, y=ugC_per_ind)) +
+  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  geom_smooth(method = "lm", col = "red") +
+  stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
+                   size = 28),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_shape_discrete(name = "Reference") +
+  guides(alpha = "none", color = guide_legend(ncol=2)) +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Carbon content (µg C cell$^{-1}$)"))
+
+reg_carbon
+
+reg_nitrogen <- data %>% 
+  filter(type!="Acantharia") %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Challengeridae",
+    type=="Protocystis CCE" ~ "Challengeridae",
+    type=="Challengeria" ~ "Challengeridae",
+    type=="Nassellaria (other)" ~ "Nassellaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria",
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  ggplot(., aes(x=individual_volume, y=ugN_per_ind)) +
+  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  geom_smooth(method = "lm", col = "red") +
+  stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
+                   size = 28),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_shape_discrete(name = "Reference") +
+  guides(alpha = "none", color = guide_legend(ncol=2)) +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Nitrogen content (µg N cell$^{-1}$)"))
+
+reg_nitrogen
+
+# Getting common legend
+
+# Get tabular interpretation of plot
+plot_table <- ggplot_gtable(ggplot_build(reg_carbon)) 
+# Mark only legend in plot
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box") 
+# extract legend
+legend <- plot_table$grobs[[legend_plot]]
+
+reg_carbon <- reg_carbon + theme(legend.position = "none")
+reg_nitrogen <- reg_nitrogen + theme(legend.position = "none")
+
+ggsave2("results/loglog_vol_carbon.png", reg_carbon)
+ggsave2("results/loglog_vol_nitrogen.png", reg_nitrogen)
+ggsave2("results/loglog_vol_elemental_legend.png", legend)
+
+```
+
+### Plotting regressions for diapo
+
+```{r}
+# Plotting regression
+
+reg_carbon <- data %>% 
+  filter(type!="Acantharia") %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Challengeridae",
+    type=="Protocystis CCE" ~ "Challengeridae",
+    type=="Challengeria" ~ "Challengeridae",
+    type=="Nassellaria (other)" ~ "Nassellaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria",
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  ggplot(., aes(x=individual_volume, y=ugC_per_ind)) +
+  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  geom_smooth(method = "lm", col = "red") +
+  stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
+                   size = 28),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_shape_discrete(name = "Reference") +
+  guides(alpha = "none", color = guide_legend(ncol=2)) +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Carbon content (µg C cell$^{-1}$)"))
+
+reg_carbon
+
+reg_nitrogen <- data %>% 
+  filter(type!="Acantharia") %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Challengeridae",
+    type=="Protocystis CCE" ~ "Challengeridae",
+    type=="Challengeria" ~ "Challengeridae",
+    type=="Nassellaria (other)" ~ "Nassellaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria",
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  ggplot(., aes(x=individual_volume, y=ugN_per_ind)) +
+  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  geom_smooth(method = "lm", col = "red") +
+  stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
+                   size = 28),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_shape_discrete(name = "Reference") +
+  guides(alpha = "none", color = guide_legend(ncol=2)) +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Nitrogen content (µg N cell$^{-1}$)"))
+
+reg_nitrogen
+
+# Getting common legend
+
+# Get tabular interpretation of plot
+plot_table <- ggplot_gtable(ggplot_build(reg_carbon)) 
+# Mark only legend in plot
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box") 
+# extract legend
+legend <- plot_table$grobs[[legend_plot]]
+
+reg_carbon <- reg_carbon + theme(legend.position = "none")
+reg_nitrogen <- reg_nitrogen + theme(legend.position = "none")
+
+ggsave2("results/diapo_loglog_vol_carbon.png", reg_carbon)
+ggsave2("results/diapo_loglog_vol_nitrogen.png", reg_nitrogen)
+ggsave2("results/diapo_loglog_vol_elemental_legend.png", legend)
+
+```
+
+### Separate models for Radiolaria and Phaeodaria
+
+```{r}
+# Comparing models with or without interaction using ANOVA
+
+# Carbon
+mod1_c <- lm(ugC_per_ind ~ individual_volume, data = data)
+mod2_c <- lm(ugC_per_ind ~ individual_volume*group, data = data)
+anova(mod1_c, mod2_c)
+
+# Nitrogen
+mod1_n <- lm(ugN_per_ind ~ individual_volume, data = data)
+mod2_n <- lm(ugN_per_ind ~ individual_volume*group, data = data)
+anova(mod1_n, mod2_n)
+
+```
+
+```{r}
+# Carbon content
+
+model.reg.c <- function(data, group_name) {
+  
+  # Defining training control as Leave One Out Cross Validation
+  train_control <- trainControl(method = "LOOCV")
+  
+  # Training the model by assigning log 10 carbon content per cell column
+  # as dependant variable and log 10 cell volume as independent variable
+  model <- data %>% filter(group==group_name) %>%
+    dplyr::select(ugC_per_ind, individual_volume) %>%
+    filter(!is.na(individual_volume)) %>%
+    filter(!is.na(ugC_per_ind)) %>%
+    mutate(ugC_per_ind = log10(ugC_per_ind),
+           individual_volume = log10(individual_volume)) %>%
+    train(ugC_per_ind ~., data = ., method = "lm",
+          trControl = train_control)
+  
+  return(model)
+}
+
+# Model Radiolaria
+
+model_rad_c <- model.reg.c(data, "Radiolaria")
+summary(model_rad_c)
+coefs_rad_c <- coef(summary(model_rad_c))
+rownames(coefs_rad_c) <- c("Intercept $\\beta_0$ (Radiolaria C)",
+                         "Slope $\\beta_1$ (Radiolaria C)")
+
+# Model Phaeodaria
+
+model_phaeo_c <- model.reg.c(data, "Phaeodaria")
+summary(model_phaeo_c)
+coefs_phaeo_c <- coef(summary(model_phaeo_c))
+rownames(coefs_phaeo_c) <- c("Intercept $\\beta_0$ (Phaeodaria C)",
+                         "Slope $\\beta_1$ (Phaeodaria C)")
+
+# Nitrogen content
+
+model.reg.n <- function(data, group_name) {
+  
+  # Defining training control as Leave One Out Cross Validation
+  train_control <- trainControl(method = "LOOCV")
+  
+  # Training the model by assigning log 10 nitrogen content per cell column
+  # as dependant variable and log 10 cell volume as independent variable
+  model <- data %>% filter(group==group_name) %>%
+    dplyr::select(ugN_per_ind, individual_volume) %>%
+    filter(!is.na(individual_volume)) %>%
+    filter(!is.na(ugN_per_ind)) %>%
+    mutate(ugN_per_ind = log10(ugN_per_ind),
+           individual_volume = log10(individual_volume)) %>%
+    train(ugN_per_ind ~., data = ., method = "lm",
+          trControl = train_control)
+  
+  return(model)
+}
+
+# Model Radiolaria
+
+model_rad_n <- model.reg.n(data, "Radiolaria")
+summary(model_rad_n)
+coefs_rad_n <- coef(summary(model_rad_n))
+rownames(coefs_rad_n) <- c("Intercept $\\beta_0$ (Radiolaria N)",
+                         "Slope $\\beta_1$ (Radiolaria N)")
+
+# Model Phaeodaria
+
+model_phaeo_n <- model.reg.n(data, "Phaeodaria")
+summary(model_phaeo_n)
+coefs_phaeo_n <- coef(summary(model_phaeo_n))
+rownames(coefs_phaeo_n) <- c("Intercept $\\beta_0$ (Phaeodaria N)",
+                         "Slope $\\beta_1$ (Phaeodaria N)")
+
+# Create table with results
+
+coefs <- rbind(coefs_rad_c, coefs_phaeo_c, coefs_rad_n, coefs_phaeo_n)
+
+kable(coefs, "html",
+      digits = 2,
+      caption = "Slope and y-intercept of model 1 ordinary least-squares 
+      regression of log10-transformed individual carbon or nitrogen content 
+      (µgC.cell-1 or µgN.cell-1) and cell volume (mm3) for Radiolaria and 
+      Phaeodaria separately. Data are compiled from Mansour et al. (2021) and 
+      this study.") %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
+```
+
+```{r}
+# Plots
+
+reg_carbon <- data %>% 
+  ggplot(., aes(x=individual_volume, y=ugC_per_ind, group=group)) +
+  geom_point(aes(color = group, shape = reference, alpha =  0.9), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  stat_smooth(method="lm", color="darkgrey") +
+  theme_bw() +
+  theme(text = element_text(size = 12), element_line(size = 0.4),
+        aspect.ratio = 8/12) +
+  scale_colour_discrete(name = "Group") +
+  scale_color_manual(values=c("#66c2a5", "#fc8d62")) +
+  scale_shape_discrete(name = "Reference") +
+  guides(alpha = "none") +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Carbon content (µg C cell$^{-1}$)"))
+
+reg_carbon <- ggMarginal(reg_carbon, type = "density",
+                   margins = "x",
+                   groupColour = TRUE)
+
+reg_carbon
+
+reg_nitrogen <- data %>% 
+  ggplot(., aes(x=individual_volume, y=ugN_per_ind, group=group)) +
+  geom_point(aes(color = group, shape = reference, alpha =  0.9), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  stat_smooth(method="lm", color="darkgrey") +
+  theme_bw() +
+  theme(text = element_text(size = 12), element_line(size = 0.4),
+        aspect.ratio = 8/12) +
+  scale_colour_discrete(name = "Group") +
+  scale_color_manual(values=c("#66c2a5", "#fc8d62")) +
+  scale_shape_discrete(name = "Reference") +
+  guides(alpha = "none") +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Nitrogen content (µg N cell$^{-1}$)"))
+
+reg_nitrogen <- ggMarginal(reg_nitrogen, type = "density",
+                   margins = "x",
+                   groupColour = TRUE)
+
+reg_nitrogen
+
+ggsave2("results/supp_reg_carbon.pdf", reg_carbon)
+ggsave2("results/supp_reg_nitrogen.pdf", reg_nitrogen)
+
+```
+
+### Fig. 4a: Carbon densities
+
+```{r}
+# Boxplots of carbon densities arranged from lowest to highest value
+
+p_densities <- data %>%
+  mutate(type = case_when(
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria (2)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  filter(!is.na(ugC_per_mm3)) %>%
+  mutate(type_reordered = fct_reorder(type, ugC_per_mm3, .fun='median')) %>%
+  ggplot(aes(ugC_per_mm3, y=type_reordered, color=group)) + 
+  geom_boxplot(outlier.shape = NA) +
+  geom_point(position = position_jitter(seed = 42), alpha = 0.4) +
+  scale_x_log10(breaks = 10^seq(-1,10), minor_breaks = NULL) +
+  scale_color_discrete(name="Group") +
+  scale_color_manual(values=c("#66c2a5", "#fc8d62")) +
+  guides(alpha = "none", color = guide_legend(ncol=2)) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  annotation_logticks(sides="b") +
+  theme(legend.position = "bottom") +
+  xlab(TeX("Carbon density (µg C mm$^{-3}$)")) +
+  ylab("Group")
+
+p_densities
+
+# Extracting a common legend for C and N
+# Get tabular interpretation of plot
+plot_table <- ggplot_gtable(ggplot_build(p_densities)) 
+# Mark only legend in plot
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box") 
+# Extract legend
+legend <- plot_table$grobs[[legend_plot]]
+
+p_densities <- p_densities + theme(legend.position = "none")
+
+ggsave2("results/densities_carbon.png", p_densities)
+ggsave2("results/densities_legend.png", legend)
+
+# ANOVA to test for differences between groups
+aov_dens = aov(ugC_per_mm3 ~ type, data = data)
+summary(aov_dens)
+
+```
+
+### Fig. 4b: Nitrogen densities
+
+```{r}
+# Boxplots of carbon densities arranged from lowest to highest value
+
+p_densities <- data %>%
+  mutate(type = case_when(
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria (2)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  filter(!is.na(ugN_per_mm3)) %>%
+  mutate(type_reordered = fct_reorder(type, ugN_per_mm3, .fun='median')) %>%
+  ggplot(aes(ugN_per_mm3, y=type_reordered, color=group)) + 
+  geom_boxplot(outlier.shape = NA) +
+  geom_point(position = position_jitter(seed = 42), alpha = 0.4) +
+  scale_x_log10(breaks = 10^seq(-1,10), minor_breaks = NULL) +
+  scale_color_discrete(name="Group") +
+  scale_color_manual(values=c("#66c2a5", "#fc8d62")) +
+  guides(alpha = "none", color = guide_legend(ncol=2)) +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  annotation_logticks(sides="b") +
+  theme(legend.position = "bottom") +
+  xlab(TeX("Nitrogen density (µg N mm$^{-3}$)")) +
+  ylab("Group")
+
+p_densities
+
+p_densities <- p_densities + theme(legend.position = "none")
+
+ggsave2("results/densities_nitrogen.png", p_densities)
+
+# ANOVA to test for differences between groups
+
+aov_dens = aov(ugN_per_mm3 ~ type, data = data)
+summary(aov_dens)
+
+```
+
+## C:N ratio
+
+First, we test for a correlation between carbon and nitrogen content using a 
+Kendall's rank correlation test.
+
+```{r}
+# Correlation between C and N
+tab_cn <- data %>% 
+  filter(!is.na(ugC_per_ind)) %>%
+  filter(!is.na(ugN_per_ind))
+
+cor.test(tab_cn$ugC_per_ind, tab_cn$ugN_per_ind,
+    method = "kendall")
+```
+
+## Fig. 5: Boxplots C:N
+
+```{r}
+# ANOVA between groups
+
+w <- data %>%
+  filter(!is.na(c_n_ratio)) %>%
+  filter(c_n_ratio<20) %>%
+  mutate(type = case_when(
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria (2)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  ))
+
+aov_cn = aov(c_n_ratio ~ type, data = w)
+summary(aov_cn)
+
+# Boxplots
+
+bp_cn <- w %>%
+  mutate(type_reordered = fct_reorder(type, c_n_ratio, .fun='median')) %>%
+  ggplot(., aes(c_n_ratio, y=type_reordered, color=group)) + 
+    geom_boxplot(outlier.shape = NA) +
+    geom_point(position = position_jitter(seed = 42), alpha = 0.4) +
+    scale_color_manual(values=c("#66c2a5", "#fc8d62")) +
+    guides(alpha = "none", color = guide_legend(ncol=2)) +
+    theme_bw() +
+    theme(text = element_text(size = 16), element_line(size = 0.4),
+        aspect.ratio = 8/12) +
+    theme(legend.position = "bottom") +
+    xlab(TeX("C:N")) +
+    ylab("Group")
+  
+bp_cn
+
+ggsave("results/boxplots_C_N.png", plot = bp_cn)
+
+```
+
+### Fig. S6
+
+Mean C ratio as a function of mean N ratio per group. Error bars are mean +/-
+standard error.
+
+```{r}
+# Cross plot
+
+z <- data %>%
+  filter(type!="Cytocladus") %>%
+  filter(!is.na(ugC_per_ind)) %>%
+  filter(!is.na(ugN_per_ind)) %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Challengeridae",
+    type=="Protocystis CCE" ~ "Challengeridae",
+    type=="Challengeria" ~ "Challengeridae",
+    type=="Nassellaria (other)" ~ "Nassellaria",
+    type=="Nassellaria (Phlebarachnium)" ~ "Nassellaria",
+    type=="Oroscena" ~ "Orodaria",
+    type=="Cytocladus" ~ "Orodaria",
+    type=="Collodaria (Sphaerozoidae)" ~ "Collodaria (col.)",
+    type=="Collodaria (Collosphaeridae)" ~ "Collodaria (col.)",
+    TRUE ~ type
+  )) %>%
+  mutate(umolC_per_ind = ugC_per_ind/12) %>%
+  mutate(umolN_per_ind = ugN_per_ind/14) %>%
+  mutate(cn_ratio = umolC_per_ind/umolN_per_ind) %>%
+  ddply(., .(type), summarise,
+      meanC = mean(na.omit(umolC_per_ind)),
+      meanN = mean(na.omit(umolN_per_ind)),
+      sdC = sd(na.omit(umolC_per_ind)),
+      sdN = sd(na.omit(umolN_per_ind)))
+
+z
+
+p_cn <- z %>% ggplot(., aes(x = meanN, y = meanC)) + 
+  geom_point(aes(colour = type)) + 
+  geom_errorbarh(aes(xmin = meanN-sdN, xmax = meanN+sdN,
+                     y = meanC, colour = type, height = 0.1)) + 
+  geom_errorbar(aes(ymin = meanC-sdC, ymax = meanC+sdC,
+                    x = meanN, colour = type, width=0.08)) +
+  scale_x_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
+  scale_y_log10(breaks = 10^seq(-1,5), minor_breaks = NULL,
+                limits = c(0.012, NA)) +
+  theme_bw() +
+  theme(text = element_text(size = 18), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  xlab(TeX("Nitrogen content (µmol N cell$^{-1}$)")) +
+  ylab(TeX("Carbon content (µmol C cell$^{-1}$)"))
+
+p_cn
+
+ggsave2("results/supp_CN.png", plot = p_cn)
+
+```
+
+## Biogenic silica content and silica to carbon ratio
+
+Reading data.
+
+```{r}
+# Loading silica data
+data_bSi <- readxl::read_xlsx("data/data_bSi_P2107.xlsx")
+bSi_lit <- readxl::read_xlsx("data/data_bSi_literature.xlsx")
+data_bSi <- data_bSi %>% filter(is.na(to_remove))
+
+# Tidying data
+
+data_bSi <- data_bSi %>%
+  mutate(nmolSi_percell = umolSi_percell*(10^3)) %>%
+  mutate(ugSi_percell = umolSi_percell*67) %>%
+  mutate(cell_vol_mean_mm3 = cell_vol_mean*(10^(-9))) %>%
+  dplyr::select(group, type, cell_vol_mean_mm3, esd_mean, nmolSi_percell, ugSi_percell,
+                reference, area)
+
+# Get min and max values
+summ_bSi <- data_bSi %>%
+  group_by(type) %>%
+  summarise(mean_bSi = mean(na.omit(ugSi_percell)),
+            sd_bSi = sd(na.omit(ugSi_percell)))
+
+
+minbSi <- summ_bSi[which.min(summ_bSi$mean_bSi),]
+maxbSi <- summ_bSi[which.max(summ_bSi$mean_bSi),]
+print(minbSi)
+print(maxbSi)
+
+  
+bSi_lit <- bSi_lit %>%
+  dplyr::select(group, type, cell_vol_mean_mm3, esd_mean, nmolSi_percell, ugSi_percell,
+                reference, area)
+
+# Merging data
+all_bSi <- rbind(data_bSi, bSi_lit) %>%
+  mutate(type = case_when(
+    type=="Nassellaria" & area=="Med" ~ "Nassellaria (other)",
+    TRUE ~ type
+  ))
+
+```
+
+We fit a new model with our data and literature data and compare the slopes
+with the regression obtained by Llopis-Monferrer et al. (2020).
+
+```{r}
+# Computing new model
+new_mod <- bind_rows(data_bSi, bSi_lit) %>%
+  mutate(log_cell_vol_um3 = log10(cell_vol_mean_mm3*10^9),
+         log_ugSi_percell = log10(ugSi_percell)) %>%
+  lm(log_ugSi_percell ~ log_cell_vol_um3, data = .)
+
+# Comparing the slope of this new model
+
+slope_bsi = 0.52
+coefs <- coef(summary(new_mod))
+
+t_bsi = (coefs[2,1] - slope_bsi)/coefs[2,2]
+
+pt(t_bsi, new_mod$df.residual)
+
+# Plot
+
+pbsi <- all_bSi %>% 
+  mutate(reference = case_when(
+    reference=="Biard et al., 2018" ~ "Llopis-Monferrer et al., 2020",
+    TRUE ~ reference)) %>%
+  ggplot(., aes(x=cell_vol_mean_mm3, y=ugSi_percell)) +
+  geom_point(aes(color = reference, alpha =  0.9), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
+  stat_smooth(method="lm", color="darkgrey") +
+    stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 12), element_line(size = 0.4),
+        aspect.ratio = 8/12) +
+  #scale_colour_discrete(name = "Group") +
+  scale_color_manual(values=c("grey", "black")) +
+  guides(alpha = "none") +
+  xlab(TeX("Cell volume ($mm ^3$)")) +
+  ylab(TeX("Biogenic silica content (µg Si cell$^{-1}$)"))
+
+pbsi
+
+ggsave("results/supp_reg_silica.pdf", pbsi)
+
+```
+
+### Fig. 6: Plot Si:C
+
+```{r}
+# Summarizing data
+
+# Biogenic silica
+summary_silica <- all_bSi %>% 
+  dplyr::select(group, type, nmolSi_percell, area) %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae" & area=="CCE" ~ "Aulacanthidae CCE",
+    type=="Aulacanthidae" & area=="Med" ~ "Aulacanthidae Med.",
+    type=="Protocystis" & area=="Med" ~ "Protocystis Med",
+    type=="Protocystis" & area=="CCE" ~ "Protocystis CCE",
+    TRUE ~ type
+  )) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(medSi = median(nmolSi_percell),
+                   qt1Si = quantile(na.omit(nmolSi_percell), 0.25),
+                   qt3Si = quantile(na.omit(nmolSi_percell), 0.75),
+  )
+
+# Carbon
+summary_carbon <- data %>% dplyr::select(group, type, ugC_per_ind, area) %>%
+  mutate(nmolC_per_cell = (ugC_per_ind/12)*(10^3)) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(medC = median(nmolC_per_cell),
+                   qt1C = quantile(na.omit(nmolC_per_cell), 0.25),
+                   qt3C = quantile(na.omit(nmolC_per_cell), 0.75)
+  )
+
+# Merging tables
+
+z <- inner_join(summary_carbon, summary_silica,
+                by=c("group", "type", "area")) %>%
+  filter(type!="Collodaria (sol.)") %>%
+    mutate(type = case_when(
+    type=="Oroscena" ~ "Orodaria (Oroscena)",
+    TRUE ~ type
+  ))
+
+p_sic <- ggplot(z, aes(x = medC, y = medSi)) + 
+  geom_point(aes(colour = type)) + 
+  geom_errorbar(aes(ymin = qt1Si, ymax = qt3Si,
+                     x = medC, colour = type, width = 0.05)) + 
+  geom_errorbarh(aes(xmin = qt1C, xmax = qt3C,
+                    y = medSi, colour = type, height = 0.05)) +
+  #geom_text(aes(label = round(medSi/medC, 2)),
+  #              position = position_nudge(x = -0.08, y = 0.1)) +
+  scale_x_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
+  scale_y_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
+  theme_bw() +
+  theme(text = element_text(size = 14), element_line(size = 0.4),
+        aspect.ratio = 10/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  xlab(TeX("Carbon content (µmol C cell$^{-1}$)")) +
+  ylab(TeX("Biogenic silica content (µmol Si cell$^{-1}$)"))
+
+p_sic
+
+ggsave("results/ratios_sic.png", p_sic)
+
+```
+
+### Table S5: Data summary Si & C, Si:C ratio
+
+```{r}
+# Biogenic silica
+summary_silica <- all_bSi %>% 
+  dplyr::select(group, type, nmolSi_percell, area) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(n_samples_si = n(),
+                   median_nmolSi = as.integer(median(nmolSi_percell)),
+                   min_nmolSi = as.integer(min(nmolSi_percell)),
+                   max_nmolSi = as.integer(max(nmolSi_percell))
+  )
+
+# Carbon
+summary_carbon <- data %>% dplyr::select(group, type, ugC_per_ind, area) %>%
+    mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Protocystis",
+    type=="Protocystis CCE" ~ "Protocystis",
+    TRUE ~ type
+  )) %>%
+  mutate(nmolC_per_cell = (ugC_per_ind/12)*(10^3)) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(n_samples_c = n(),
+                   median_nmolC = as.integer(median(nmolC_per_cell)),
+                   min_nmolC = as.integer(min(nmolC_per_cell)),
+                   max_nmolC = as.integer(max(nmolC_per_cell))
+  )
+
+# Merging tables
+
+table_ratio <- inner_join(summary_carbon, summary_silica,
+                          by=c("group", "type", "area")) %>%
+  filter(type!="Collodaria (sol.)") %>%
+  mutate(si_c = median_nmolSi/median_nmolC)
+
+table_ratio %>% 
+  kable("html",
+        caption = "",
+        digits = 2) %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
+```
+
+### Table 2: Computing excess densities
+
+We compute the excess densities using median values of biogenic silica, carbon 
+and nitrogen contents.
+
+```{r}
+# Getting median values per group and per area
+
+# Carbon and nitrogen
+median_CN <- data %>%
+  dplyr::select(group, type, ugC_per_ind, ugN_per_ind, area) %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Protocystis",
+    type=="Protocystis CCE" ~ "Protocystis",
+    TRUE ~ type
+  )) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(median_C = median(na.omit(ugC_per_ind)),
+                   min_C = quantile(ugC_per_ind, 0.25, na.rm = TRUE),
+                   max_C = quantile(ugC_per_ind, 0.75, na.rm = TRUE),
+                   median_N = median(na.omit(ugN_per_ind)),
+                   min_N = quantile(ugN_per_ind, 0.25, na.rm = TRUE),
+                   max_N = quantile(ugN_per_ind, 0.75, na.rm = TRUE)
+                   )
+
+# Biogenic silica
+median_si <- all_bSi %>%
+  dplyr::select(group, type, ugSi_percell, area) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(median_si = median(na.omit(ugSi_percell)),
+                   min_si = quantile(ugSi_percell, 0.25, na.rm = TRUE),
+                   max_si = quantile(ugSi_percell, 0.75, na.rm = TRUE)
+                   )
+
+# For volume, we take all data
+vol1 <- data %>%
+  dplyr::select(group, type, individual_volume, area) %>%
+  mutate(type = case_when(
+    type=="Aulacanthidae CCE" ~ "Aulacanthidae",
+    type=="Aulacanthidae Med." ~ "Aulacanthidae",
+    type=="Protocystis SO" ~ "Protocystis",
+    type=="Protocystis CCE" ~ "Protocystis",
+    TRUE ~ type
+  ))
+
+vol2 <- data_bSi %>%
+  filter(type != "Nassellaria (Phlebarachnium)") %>%
+  dplyr::select(group, type, cell_vol_mean_mm3, area) %>%
+  mutate(individual_volume = cell_vol_mean_mm3) %>%
+  dplyr::select(group, type, individual_volume, area)
+
+median_vol <- bind_rows(vol1, vol2) %>%
+  group_by(group, type, area) %>%
+  dplyr::summarise(median_vol = median(na.omit(individual_volume)))
+
+# Merging all tables
+excess_densities <- inner_join(median_CN, median_si,
+                               by=c("group", "type", "area")) %>%
+  inner_join(., median_vol,
+             by=c("group", "type", "area")) %>%
+  filter(type!="Collodaria (sol.)") %>%
+  mutate(rho_sw= case_when(
+    area=="Med" ~ 1027.5,
+    area=="CCE" ~ 1025.2,
+    TRUE ~ 0
+  )) %>%
+  # Excess densities from median values
+  mutate(MSi = median_si,
+         Mom = median_C + median_N,
+         VSi = median_si/2150,
+         Vom = (median_C+median_N)/1050,
+         Vw = median_vol - Vom - VSi,
+         Mw = rho_sw*Vw,
+         M = MSi + Mom + Mw,
+         density = M/median_vol,
+         # Excess density by subtracting sw density
+         excess_density_med = density - rho_sw,
+         esd_mm_med = ((3*median_vol/(4*pi))^(1/3))*2,
+         esd_m = esd_mm_med*1e-3,
+         speed = (1/18)*9.81*excess_density_med*(esd_m^2)/0.001,
+         speed_day_med = as.integer(speed*86400)) %>%
+  # Excess densities from min values
+  mutate(MSi = min_si,
+         Mom = min_C + min_N,
+         VSi = min_si/2150,
+         Vom = (min_C+min_N)/1050,
+         Vw = median_vol - Vom - VSi,
+         Mw = rho_sw*Vw,
+         M = MSi + Mom + Mw,
+         density = M/median_vol,
+         # Excess density by subtracting sw density
+         excess_density_min = density - rho_sw,
+         esd_mm = ((3*median_vol/(4*pi))^(1/3))*2,
+         esd_m = esd_mm*1e-3,
+         speed = (1/18)*9.81*excess_density_min*(esd_m^2)/0.001,
+         speed_day_min = as.integer(speed*86400)) %>%
+  # Excess densities from max values
+  mutate(MSi = max_si,
+         Mom = max_C + max_N,
+         VSi = max_si/2150,
+         Vom = (max_C+max_N)/1050,
+         Vw = median_vol - Vom - VSi,
+         Mw = rho_sw*Vw,
+         M = MSi + Mom + Mw,
+         density = M/median_vol,
+         # Excess density by subtracting sw density
+         excess_density_max = density - rho_sw,
+         esd_mm = ((3*median_vol/(4*pi))^(1/3))*2,
+         esd_m = esd_mm*1e-3,
+         speed = (1/18)*9.81*excess_density_max*(esd_m^2)/0.001,
+         speed_day_max = as.integer(speed*86400)) %>% 
+  mutate(esd_um = as.integer(esd_mm*1e3)) %>%
+  # Selecting columns
+  dplyr::select(group, type, area, esd_um,
+                excess_density_med, excess_density_min, excess_density_max,
+                speed_day_med, speed_day_min, speed_day_max)
+
+excess_densities %>%
+    kable("html",
+        caption = "",
+        digits = 2) %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
+```
+
+## Biogenic silica production
+
+```{r}
+# Loading data
+data_si32 <- readxl::read_xlsx("data/data_si32.xlsx")
+si32_lit <- readxl::read_xlsx("data/data_bSi_literature.xlsx")
+
+# Tidying data
+
+sum(data_si32$n_cells)
+
+data_si32 <- data_si32 %>%
+  mutate(cell_vol = cell_vol_mean*10^(-9),
+         nmolSi_percell = umolSi_percell*10^3) %>%
+  dplyr::select(group, type, cell_vol, esd_mean, nmolSi_percell_perday,
+         nmolSi_percell, Vp, reference, area)
+
+si32_lit <- si32_lit %>%
+  filter(!is.na(nmolSi_percell_perday)) %>%
+  mutate(cell_vol = cell_vol_mean_mm3,
+         Vp = nmolSi_percell_perday/nmolSi_percell) %>%
+  dplyr::select(group, type, cell_vol, esd_mean, nmolSi_percell_perday,
+         nmolSi_percell, Vp, reference, area)
+
+# Summary of our data
+
+si32 <- data_si32 %>%
+  group_by(type) %>%
+  dplyr::summarise(mean_pp = mean(na.omit(nmolSi_percell_perday)),
+                   sd_pp = sd(na.omit(nmolSi_percell_perday)))
+minpp <- si32[which.min(si32$mean_pp),]
+maxpp <- si32[which.max(si32$mean_pp),]
+print(minpp)
+print(maxpp)
+
+vp <- data_si32 %>%
+  group_by(type) %>%
+  dplyr::summarise(mean_vp = mean(na.omit(Vp)),
+                   sd_vp = sd(na.omit(Vp)))
+minvp <- vp[which.min(vp$mean_vp),]
+maxvp <- vp[which.max(vp$mean_vp),]
+print(minvp)
+print(maxvp)
+
+log(2)/minvp$mean_vp
+log(2)/maxvp$mean_vp
+  
+```
+
+### Table 3
+
+```{r}
+# Merging tables
+all_si32 <- data_si32 %>%
+  bind_rows(., si32_lit)
+
+# Summarizing table
+table_si32 <- all_si32 %>%
+  group_by(group, type, area, reference) %>%
+  dplyr::summarise(mean_vp = mean(Vp),
+                   sd_vp = sd(Vp),
+                   turnover_time = as.integer(log(2)/mean_vp))
+
+# Creating table
+table_si32 %>% 
+  kable("html",
+        caption = "",
+        digits = 4) %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
+```
+
+```{r}
+# Investigate link of uptake and Vp with size
+
+cor.test(all_si32$nmolSi_percell_perday, all_si32$cell_vol, method="kendall")
+cor.test(all_si32$Vp, all_si32$cell_vol, method="kendall")
+
+```
+
+### Table S6
+
+```{r}
+# Summarizing table
+supp_si32 <-data_si32 %>%
+  dplyr::select(group, type, esd_mean, nmolSi_percell_perday,
+         nmolSi_percell, Vp) %>%
+  group_by(group, type) %>%
+  dplyr::summarise(n = n(),
+                   mean_esd = as.integer(mean(esd_mean)),
+                   sd_esd = as.integer(sd(esd_mean)),
+                   mean_si_cell = round(mean(nmolSi_percell), 2),
+                   sd_si_cell = round(sd(nmolSi_percell), 2),
+                   mean_si_cell_day = round(mean(nmolSi_percell_perday), 2),
+                   sd_si_cell_day = round(sd(nmolSi_percell_perday), 2),
+                   mean_vp = round(mean(Vp), 4),
+                   sd_vp = round(sd(Vp), 4),
+                   turnover_time = as.integer(log(2)/mean_vp))
+
+# Creating table
+supp_si32 %>% 
+  kable("html",
+        caption = "") %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
+```
+
+### Uptake rates and silicic acid concentration
+
+```{r}
+# Reading and tidying silicic acid data
+data_nutrients <- readxl::read_xlsx("data/P2107_Nutrients.xlsx") %>%
+  mutate(Date_GMT = as_date(Datetime_GMT)) %>%
+  dplyr::select(Date_GMT, Silicic_Acid_umolperL)
+
+# Mean silicic acid per day
+
+mean_silic <- data_nutrients %>% group_by(Date_GMT) %>%
+  dplyr::summarise(mean_silicic_acid = mean(Silicic_Acid_umolperL))
+
+# Link uptake values w/ silicic acid
+
+data_si32 <- readxl::read_xlsx("data/data_si32.xlsx")
+
+data_si32 <- data_si32 %>%
+  mutate(cell_vol = cell_vol_mean*10^(-9),
+         nmolSi_percell = umolSi_percell*10^3) %>%
+  dplyr::select(date, group, type, cell_vol, esd_mean, nmolSi_percell_perday,
+         nmolSi_percell, Vp, reference, area) %>%
+  mutate(Date_GMT = date) %>%
+  left_join(., mean_silic)
+
+cor.test(data_si32$nmolSi_percell_perday, data_si32$mean_silicic_acid, method="kendall")
+cor.test(data_si32$Vp, data_si32$mean_silicic_acid, method="kendall")
+
+```
