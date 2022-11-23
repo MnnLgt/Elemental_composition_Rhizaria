@@ -1,5 +1,5 @@
 ---
-title: "Elemental composition and silica production of siliceous Rhizaria"
+title: "Elemental composition and silica production of planktonic Rhizaria"
 author: "Manon Laget"
 date: "21/04/2022"
 output: html_document
@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 opts <- options(knitr.kable.NA = "")
 ```
 
-## Packages
+## Load packages
 
 ```{r}
 library(tidyverse)
@@ -45,7 +45,12 @@ library(rnaturalearth)
 
 ```
 
-## Maps
+## Maps of the sampling locations
+
+Specimens were collected during the P2107 cruise off San Diego, California, and 
+at point B in the bay of Villefranche-sur-mer, France.
+
+First, let's load the coordinates.
 
 ```{r}
 # Loading station data
@@ -55,6 +60,8 @@ lon <- sampling_loc$Lon
 type <- sampling_loc$Type
 
 ```
+
+Trial with the oce package:
 
 ```{r, include=FALSE}
 # Sampling locations in the CCE with oce
@@ -81,11 +88,12 @@ mapText(-129, 33, "Pacific Ocean", cex=1.2, col="darkgrey",
         vfont = c("sans serif", "italic"))
 ```
 
+Maps done with ggplot2 and sf packages:
+
 ```{r}
 # Sampling locations with ggplot2 and sf
 
 theme_set(theme_bw())
-
 world <- ne_countries(scale='medium', returnclass = 'sf')
 
 # Mapping the stations in the CCE
@@ -177,6 +185,8 @@ map_med <- ggplot(data = world) +
 
 map_med
 
+# Saving maps in the results/ folder
+
 ggsave2("results/sampling_locations_cce_2021.png", plot = map_cce)
 ggsave2("results/sampling_locations_med_2019.png", plot = map_med)
 
@@ -227,7 +237,7 @@ counts_ref <- data %>% #filter(reference=="This study") %>%
 print(counts_ref)
 ```
 
-Getting minimum and maximum values for C and N content for this study:
+Getting minimum and maximum values for C and N contents for this study:
 
 ```{r}
 #Carbon
@@ -326,6 +336,8 @@ table %>%
 
 ### Volume to carbon content relationship
 
+Let's fit the linear model on the log10-transformed data:
+
 ```{r}
 # Fitting a linear model (OLS) for all individuals with LOOCV
 
@@ -341,12 +353,16 @@ model <- data %>% dplyr::select(ugC_per_ind, individual_volume) %>%
 
 summary(model)
 
-# Analysis of residuals
+```
 
+Analysis of residuals:
+
+```{r}
 resid <- tibble(.rows = 256)
 resid$fitted_values <- model$finalModel$fitted.values
 resid$residuals <- model$finalModel$residuals
 
+# Fitted values vs residuals
 p1 <- ggplot(resid, aes(x = fitted_values, y = residuals)) +
   geom_point() +
   geom_hline(yintercept=0) +
@@ -355,6 +371,7 @@ p1 <- ggplot(resid, aes(x = fitted_values, y = residuals)) +
   xlab("Fitted values") +
   ylab("Residuals")
 
+# Theoretical quantiles vs observed quantiles
 p2 <- ggplot(resid, aes(sample=residuals)) +
   stat_qq() +
   stat_qq_line() + 
@@ -363,6 +380,7 @@ p2 <- ggplot(resid, aes(sample=residuals)) +
   xlab("Theoretical quantiles") +
   ylab("Sample quantiles")
 
+# Density of residuals
 p3 <- ggplot(resid, aes(x=residuals)) +
   geom_density() +
   theme_bw() +
@@ -370,13 +388,33 @@ p3 <- ggplot(resid, aes(x=residuals)) +
   xlab("Residuals") +
   ylab("Density")
 
+# Saving the 3 plots
 ggsave2("results/resid1_carbon.pdf", p1)
 ggsave2("results/resid2_carbon.pdf", p2)
 ggsave2("results/resid3_carbon.pdf", p3)
 
 ```
 
-### Volume to nitrogen content relationship
+Let's calculate the prediction intervals at 95% for this C:V relationship.
+
+```{r}
+# Create a vector covering the whole size spectrum
+newx <- data.frame(individual_volume = model$finalModel$model$individual_volume)
+
+# Predict with model
+ypredC <- predict(model$finalModel, newdata = newx, 
+                  interval = "predict", level = 0.95)
+ypredC <- as.data.frame(ypredC)
+ypredC$x <- 10^(newx$individual_volume)
+ypredC$fit <- 10^ypredC$fit
+ypredC$lwr <- 10^ypredC$lwr
+ypredC$upr <- 10^ypredC$upr
+
+```
+
+### Volume to nitrogen content 
+
+We'll just do the same for nitrogen. First we fit the model:
 
 ```{r}
 # Fitting a linear model (OLS) for all individuals with LOOCV
@@ -390,13 +428,16 @@ model <- data %>% dplyr::select(ugN_per_ind, individual_volume) %>%
         trControl = train_control)
 
 summary(model)
+```
 
-# Analysis of residuals
+Analysis of residuals:
 
+```{r}
 resid <- tibble(.rows = 235)
 resid$fitted_values <- model$finalModel$fitted.values
 resid$residuals <- model$finalModel$residuals
 
+# Fitted values vs residuals
 p1 <- ggplot(resid, aes(x = fitted_values, y = residuals)) +
   geom_point() +
   geom_hline(yintercept=0) +
@@ -405,6 +446,7 @@ p1 <- ggplot(resid, aes(x = fitted_values, y = residuals)) +
   xlab("Fitted values") +
   ylab("Residuals")
 
+# Theoretical quantiles vs observed quantiles
 p2 <- ggplot(resid, aes(sample=residuals)) +
   stat_qq() +
   stat_qq_line() + 
@@ -413,6 +455,7 @@ p2 <- ggplot(resid, aes(sample=residuals)) +
   xlab("Theoretical quantiles") +
   ylab("Sample quantiles")
 
+# Density of residuals
 p3 <- ggplot(resid, aes(x=residuals)) +
   geom_density() +
   theme_bw() +
@@ -420,9 +463,27 @@ p3 <- ggplot(resid, aes(x=residuals)) +
   xlab("Residuals") +
   ylab("Density")
 
+# Saving the 3 plots
 ggsave2("results/resid1_nitrogen.pdf", p1)
 ggsave2("results/resid2_nitrogen.pdf", p2)
 ggsave2("results/resid3_nitrogen.pdf", p3)
+
+```
+
+Again calculate the prediction intervals at 95% for this N:V relationship.
+
+```{r}
+# Create a vector covering the whole size spectrum
+newx <- data.frame(individual_volume = model$finalModel$model$individual_volume)
+
+# Predict with model
+ypredN <- predict(model$finalModel, newdata = newx, 
+                  interval = "predict", level = 0.95)
+ypredN <- as.data.frame(ypredN)
+ypredN$x <- 10^(newx$individual_volume)
+ypredN$fit <- 10^ypredN$fit
+ypredN$lwr <- 10^ypredN$lwr
+ypredN$upr <- 10^ypredN$upr
 
 ```
 
@@ -463,7 +524,9 @@ pt(t_diatoms, model$finalModel$df.residual)
 # Plotting regression
 
 reg_carbon <- data %>% 
+  # Removing Acantharia for which no size data
   filter(type!="Acantharia") %>%
+  # Renaming taxa
   mutate(type = case_when(
     type=="Aulacanthidae CCE" ~ "Aulacanthidae",
     type=="Aulacanthidae Med." ~ "Aulacanthidae",
@@ -479,29 +542,44 @@ reg_carbon <- data %>%
     TRUE ~ type
   )) %>%
   ggplot(., aes(x=individual_volume, y=ugC_per_ind)) +
-  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+  geom_smooth(method = "lm", col = "black", fill = "lightgrey") +
+  # Adding prediction intervals
+  geom_line(data = ypredC, inherit.aes = FALSE,
+            aes(x = x, y = lwr), 
+            col = "black", linetype = "dashed", alpha = 0.9) + 
+  geom_line(data = ypredC, inherit.aes = FALSE,
+            aes(x = x, y = upr), 
+            col = "black", linetype = "dashed", alpha = 0.9) + 
+  # Plot points
+  geom_point(aes(color = type, shape = reference), 
              size = 2) +
+  # Log scale
   scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
   scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
   annotation_logticks(sides="bl") +
-  geom_smooth(method = "lm", col = "red") +
+  # Adding equation
   stat_poly_eq(formula = y~x,
                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
                    size = 28),
                parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  # Nice aesthetics
   theme_bw() +
   theme(text = element_text(size = 16), element_line(size = 0.4),
         aspect.ratio = 10/12) +
-  scale_color_carto_d(name = "Group", palette = "Safe") +
+  #scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_color_brewer(palette = "Set3") +
   scale_shape_discrete(name = "Reference") +
   guides(alpha = "none", color = guide_legend(ncol=2)) +
+  # Axes
   xlab(TeX("Cell volume ($mm ^3$)")) +
   ylab(TeX("Carbon content (µg C cell$^{-1}$)"))
 
 reg_carbon
 
 reg_nitrogen <- data %>% 
+  # Removing Acantharia for which no size data
   filter(type!="Acantharia") %>%
+  # Renaming taxa
   mutate(type = case_when(
     type=="Aulacanthidae CCE" ~ "Aulacanthidae",
     type=="Aulacanthidae Med." ~ "Aulacanthidae",
@@ -517,22 +595,35 @@ reg_nitrogen <- data %>%
     TRUE ~ type
   )) %>%
   ggplot(., aes(x=individual_volume, y=ugN_per_ind)) +
-  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+  geom_smooth(method = "lm", col = "black", fill = "lightgrey") +
+    # Adding prediction intervals
+  geom_line(data = ypredN, inherit.aes = FALSE,
+            aes(x = x, y = lwr), 
+            col = "black", linetype = "dashed", alpha = 0.9) + 
+  geom_line(data = ypredN, inherit.aes = FALSE,
+            aes(x = x, y = upr), 
+            col = "black", linetype = "dashed", alpha = 0.9) + 
+  # Plot points
+  geom_point(aes(color = type, shape = reference), 
              size = 2) +
+  # Log scale
   scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
   scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
   annotation_logticks(sides="bl") +
-  geom_smooth(method = "lm", col = "red") +
+  # Adding equation
   stat_poly_eq(formula = y~x,
                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
                    size = 28),
                parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  # Nice aesthetics
   theme_bw() +
   theme(text = element_text(size = 16), element_line(size = 0.4),
         aspect.ratio = 10/12) +
-  scale_color_carto_d(name = "Group", palette = "Safe") +
+  #scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_color_brewer(palette = "Set3") +
   scale_shape_discrete(name = "Reference") +
   guides(alpha = "none", color = guide_legend(ncol=2)) +
+  # Axes
   xlab(TeX("Cell volume ($mm ^3$)")) +
   ylab(TeX("Nitrogen content (µg N cell$^{-1}$)"))
 
@@ -550,9 +641,9 @@ legend <- plot_table$grobs[[legend_plot]]
 reg_carbon <- reg_carbon + theme(legend.position = "none")
 reg_nitrogen <- reg_nitrogen + theme(legend.position = "none")
 
-ggsave2("results/loglog_vol_carbon.png", reg_carbon)
-ggsave2("results/loglog_vol_nitrogen.png", reg_nitrogen)
-ggsave2("results/loglog_vol_elemental_legend.png", legend)
+ggsave2("results/loglog_vol_carbon.pdf", reg_carbon)
+ggsave2("results/loglog_vol_nitrogen.pdf", reg_nitrogen)
+ggsave2("results/loglog_vol_elemental_legend.pdf", legend)
 
 ```
 
@@ -578,7 +669,7 @@ reg_carbon <- data %>%
     TRUE ~ type
   )) %>%
   ggplot(., aes(x=individual_volume, y=ugC_per_ind)) +
-  geom_point(aes(color = type, shape = reference, alpha =  0.95), 
+  geom_point(aes(color = group, shape = reference, alpha =  0.95), 
              size = 2) +
   scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
   scale_x_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
@@ -591,7 +682,7 @@ reg_carbon <- data %>%
   theme_bw() +
   theme(text = element_text(size = 16), element_line(size = 0.4),
         aspect.ratio = 10/12) +
-  scale_color_carto_d(name = "Group", palette = "Safe") +
+  scale_color_carto_d(name = "Taxon", palette = "Safe") +
   scale_shape_discrete(name = "Reference") +
   guides(alpha = "none", color = guide_legend(ncol=2)) +
   xlab(TeX("Cell volume ($mm ^3$)")) +
@@ -862,8 +953,8 @@ legend <- plot_table$grobs[[legend_plot]]
 
 p_densities <- p_densities + theme(legend.position = "none")
 
-ggsave2("results/densities_carbon.png", p_densities)
-ggsave2("results/densities_legend.png", legend)
+ggsave2("results/densities_carbon.pdf", p_densities)
+ggsave2("results/densities_legend.pdf", legend)
 
 # ANOVA to test for differences between groups
 aov_dens = aov(ugC_per_mm3 ~ type, data = data)
@@ -906,7 +997,7 @@ p_densities
 
 p_densities <- p_densities + theme(legend.position = "none")
 
-ggsave2("results/densities_nitrogen.png", p_densities)
+ggsave2("results/densities_nitrogen.pdf", p_densities)
 
 # ANOVA to test for differences between groups
 
@@ -968,7 +1059,7 @@ bp_cn <- w %>%
   
 bp_cn
 
-ggsave("results/boxplots_C_N.png", plot = bp_cn)
+ggsave("results/boxplots_C_N.pdf", plot = bp_cn)
 
 ```
 
@@ -1033,7 +1124,7 @@ ggsave2("results/supp_CN.png", plot = p_cn)
 
 ## Biogenic silica content and silica to carbon ratio
 
-Reading data.
+Reading data:
 
 ```{r}
 # Loading silica data
@@ -1143,6 +1234,7 @@ summary_silica <- all_bSi %>%
   )) %>%
   group_by(group, type, area) %>%
   dplyr::summarise(medSi = median(nmolSi_percell),
+                   madSi = mad(na.omit(nmolSi_percell)),
                    qt1Si = quantile(na.omit(nmolSi_percell), 0.25),
                    qt3Si = quantile(na.omit(nmolSi_percell), 0.75),
   )
@@ -1152,6 +1244,7 @@ summary_carbon <- data %>% dplyr::select(group, type, ugC_per_ind, area) %>%
   mutate(nmolC_per_cell = (ugC_per_ind/12)*(10^3)) %>%
   group_by(group, type, area) %>%
   dplyr::summarise(medC = median(nmolC_per_cell),
+                   madC = mad(na.omit(nmolC_per_cell)),
                    qt1C = quantile(na.omit(nmolC_per_cell), 0.25),
                    qt3C = quantile(na.omit(nmolC_per_cell), 0.75)
   )
@@ -1166,26 +1259,49 @@ z <- inner_join(summary_carbon, summary_silica,
     TRUE ~ type
   ))
 
+
+# Fig. with Median Absolute Deviation
+
 p_sic <- ggplot(z, aes(x = medC, y = medSi)) + 
   geom_point(aes(colour = type)) + 
-  geom_errorbar(aes(ymin = qt1Si, ymax = qt3Si,
+  geom_errorbar(aes(ymin = medSi-madSi, ymax = medSi+madSi,
                      x = medC, colour = type, width = 0.05)) + 
-  geom_errorbarh(aes(xmin = qt1C, xmax = qt3C,
+  geom_errorbarh(aes(xmin = medC-madC, xmax = medC+madC,
                     y = medSi, colour = type, height = 0.05)) +
-  #geom_text(aes(label = round(medSi/medC, 2)),
-  #              position = position_nudge(x = -0.08, y = 0.1)) +
-  scale_x_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
-  scale_y_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
+  scale_x_log10(breaks = 10^seq(-1,5), minor_breaks = NULL, labels = comma) +
+  scale_y_log10(breaks = 10^seq(-1,5), minor_breaks = NULL, labels = comma) +
+  annotation_logticks(sides="bl") +
   theme_bw() +
-  theme(text = element_text(size = 14), element_line(size = 0.4),
-        aspect.ratio = 10/12) +
+  theme(text = element_text(size = 12), element_line(size = 0.4),
+        aspect.ratio = 12/12) +
   scale_color_carto_d(name = "Group", palette = "Safe") +
   xlab(TeX("Carbon content (µmol C cell$^{-1}$)")) +
   ylab(TeX("Biogenic silica content (µmol Si cell$^{-1}$)"))
 
 p_sic
 
-ggsave("results/ratios_sic.png", p_sic)
+ggsave("results/ratios_sic_mad.pdf", p_sic)
+
+# Fig. with 1st and 3rd quantiles
+
+p_sic <- ggplot(z, aes(x = medC, y = medSi)) + 
+  geom_point(aes(colour = type)) + 
+  geom_errorbar(aes(ymin = qt1Si, ymax = qt3Si,
+                     x = medC, colour = type, width = 0.05)) + 
+  geom_errorbarh(aes(xmin = qt1C, xmax = qt3C,
+                    y = medSi, colour = type, height = 0.05)) +
+  scale_x_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
+  scale_y_log10(breaks = 10^seq(-1,5), minor_breaks = NULL) +
+  theme_bw() +
+  theme(text = element_text(size = 12), element_line(size = 0.4),
+        aspect.ratio = 12/12) +
+  scale_color_carto_d(name = "Group", palette = "Safe") +
+  xlab(TeX("Carbon content (µmol C cell$^{-1}$)")) +
+  ylab(TeX("Biogenic silica content (µmol Si cell$^{-1}$)"))
+
+p_sic
+
+ggsave("results/ratios_sic_quant.pdf", p_sic)
 
 ```
 
@@ -1478,12 +1594,14 @@ supp_si32 %>%
 # Reading and tidying silicic acid data
 data_nutrients <- readxl::read_xlsx("data/P2107_Nutrients.xlsx") %>%
   mutate(Date_GMT = as_date(Datetime_GMT)) %>%
-  dplyr::select(Date_GMT, Silicic_Acid_umolperL)
+  dplyr::select(Date_GMT, Silicic_Acid_umolperL, Actual_Depth_m)
 
 # Mean silicic acid per day
 
 mean_silic <- data_nutrients %>% group_by(Date_GMT) %>%
-  dplyr::summarise(mean_silicic_acid = mean(Silicic_Acid_umolperL))
+  dplyr::summarise(mean_silicic_acid = mean(Silicic_Acid_umolperL),
+                   min_depth = min(na.omit(Actual_Depth_m)),
+                   max_depth = max(na.omit(Actual_Depth_m)))
 
 # Link uptake values w/ silicic acid
 
@@ -1497,7 +1615,134 @@ data_si32 <- data_si32 %>%
   mutate(Date_GMT = date) %>%
   left_join(., mean_silic)
 
+# Print table
+data_si32 %>% 
+  dplyr::select(Date_GMT, mean_silicic_acid, min_depth, max_depth) %>%
+  group_by(Date_GMT) %>%
+  dplyr::summarise(mean_silicic_acid = mean(mean_silicic_acid),
+                   min_depth = mean(min_depth),
+                   max_depth = mean(max_depth)) %>%
+  kable("html",
+        caption = "") %>%
+  collapse_rows(.) %>%
+  kable_styling("striped", full_width = F, position="left")
+
 cor.test(data_si32$nmolSi_percell_perday, data_si32$mean_silicic_acid, method="kendall")
 cor.test(data_si32$Vp, data_si32$mean_silicic_acid, method="kendall")
 
 ```
+
+### Figs for InterRad
+
+```{r}
+
+esd = c(100, 300, 1000, 3000, 8000)
+volumes = (((esd/1000)/2)^3)*(4/3)*pi
+
+reg_carbon <- data %>% 
+  filter(type!="Acantharia") %>%
+  ggplot(., aes(x=individual_volume, y=ugC_per_ind)) +
+  geom_point(aes(color = reference), 
+             size = 2) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = volumes, minor_breaks = NULL, labels = esd) +
+  geom_smooth(method = "lm", col = "black") +
+  stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
+                   size = 32),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 14), element_line(size = 0.4),
+        aspect.ratio = 8/12, legend.position = "bottom") +
+  scale_color_carto_d(name = "Reference", palette = "Safe") +
+  xlab(TeX("Size (µm)")) +
+  ylab(TeX("Carbon content (µg C cell$^{-1}$)"))
+
+reg_carbon
+
+reg_nitrogen <- data %>% 
+  filter(type!="Acantharia") %>%
+  ggplot(., aes(x=individual_volume, y=ugN_per_ind)) +
+  geom_point(aes(color = reference), 
+             size = 2.4) +
+  scale_y_log10(breaks = 10^seq(-3,5), minor_breaks = NULL, labels = comma) +
+  scale_x_log10(breaks = volumes, minor_breaks = NULL, labels = esd) +
+  geom_smooth(method = "lm", col = "black") +
+  stat_poly_eq(formula = y~x,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~"),
+                   size = 32),
+               parse = TRUE, coef.digits = 3, f.digits = 3, p.digits = 5) +
+  theme_bw() +
+  theme(text = element_text(size = 14), element_line(size = 0.4),
+        aspect.ratio = 8/12, legend.position = "bottom") +
+  scale_color_carto_d(name = "Reference", palette = "Safe") +
+  xlab(TeX("Size (µm)")) +
+  ylab(TeX("Nitrogen content (µg N cell$^{-1}$)"))
+
+reg_nitrogen
+
+ggsave2("results/regC_for_diapo.png", plot = reg_carbon)
+ggsave2("results/regN_for_diapo.png", plot = reg_nitrogen)
+
+```
+
+```{r}
+
+data_bis <- data %>%
+  dplyr::select(ugC_per_ind, individual_volume) %>%
+  mutate(pgC_per_ind = ugC_per_ind*(10^6)) %>%
+  mutate(vol_um3 = individual_volume*10^9)
+
+lm(log10(pgC_per_ind) ~ log10(vol_um3), data = data_bis)
+
+x = seq(from = 200, to = 5000, length.out = 100)
+xvol = (4/3)*pi*((x/2)^3)
+y_diat = (0.288 * (xvol^0.811)) * (10^-6)
+y_other = (0.216 * (xvol^0.939)) * (10^-6)
+y_rhiz = (10^(2.86 + 0.455*log10(xvol))) * (10^-6)
+dat = tibble(xvol, x, y_rhiz, y_diat, y_other)
+
+p1 <- ggplot(dat, aes(x = x, y = y_rhiz, color = "Rhizaria")) +
+  geom_line(size = 1.2) +
+  geom_line(aes(x = x, y = y_other,
+                color ="Various protists"), size = 1.2) +
+  scale_x_log10(minor_breaks = NULL) +
+  scale_y_log10(minor_breaks = NULL) +
+  annotation_logticks(sides="bl") +
+  theme_bw() +
+  theme(text = element_text(size = 16), element_line(size = 0.4),
+      aspect.ratio = 8/12, legend.position="none") +
+  xlab(TeX("ESD (µm)")) +
+  ylab(TeX("C content (µg C cell$^{-1}$)"))
+
+p1
+
+p2 <- ggplot(dat, aes(x = x, y = y_rhiz, color = "Rhizaria")) +
+  geom_line(size = 1.2) +
+  geom_line(aes(x = x, y = y_diat,
+                color ="Diatoms"),  size = 1.2) +
+  xlim(c(0, 3000)) +
+  theme_bw() +
+  xlab(TeX("ESD (µm)")) +
+  ylab(TeX("C content (µg C cell$^{-1}$)"))
+
+p2
+
+p <- ggplot(dat, aes(x = x, y = y_rhiz, color = "Rhizaria")) +
+  geom_line(size = 1.2) +
+  geom_line(aes(x = x, y = y_diat,
+                color ="Diatoms"),  size = 1.2) +
+  geom_line(aes(x = x, y = y_other,
+                color ="Various protists"), size = 1.2) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_bw() +
+  xlab(TeX("ESD (µm)")) +
+  ylab(TeX("C content (µg C cell$^{-1}$)"))
+
+p
+
+
+```
+
+
